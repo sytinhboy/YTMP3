@@ -58,5 +58,5 @@ Vui lòng chỉ sử dụng công cụ này để tải nội dung bạn có quy
 
 
 <img width="573" alt="Screenshot 2025-04-01 at 00 17 19" src="https://github.com/user-attachments/assets/09c6586d-7449-4284-b24f-02ef5b2873ea" />
-<img width="608" alt="Screenshot 2025-04-01 at 00 16 16" src="https://github.com/user-attachments/assets/cb6e5cac-ea27-4be6-ba15-294aeb6df86b" />
+<img width="553" alt="Screenshot 2025-04-01 at 00 32 26" src="https://github.com/user-attachments/assets/8d51d4c8-3368-4571-b070-83d3f6b78848" />
 <img width="556" alt="Screenshot 2025-04-01 at 00 15 22" src="https://github.com/user-attachments/assets/8b1796b1-d081-4fcb-9e51-70ab7610010e" />
