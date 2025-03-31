@@ -1,4 +1,3 @@
-import os
 import yt_dlp
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -13,7 +12,9 @@ import colorsys
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import ID3, APIC, COMM
 import requests
-
+import os
+import math
+import time
 
 # Then use:
 current_date = datetime.now().strftime("%d-%m-%y")
@@ -52,10 +53,17 @@ class RoundedButton(tk.Canvas):
         # Initialize canvas with calculated dimensions
         kwargs['width'] = self.width
         kwargs['height'] = self.height
-        kwargs['highlightthickness'] = kwargs.get('highlightthickness', 0)
-        kwargs['bd'] = kwargs.get('bd', 0)
+        kwargs['highlightthickness'] = 0  # Hoàn toàn loại bỏ đường viền highlight
+        kwargs['bd'] = 0  # Loại bỏ border
+        
+        # Lấy màu nền của parent để đặt làm màu nền của canvas
+        parent_bg = parent.cget('bg')
+        kwargs['bg'] = parent_bg  # Đặt màu nền canvas trùng với parent
         
         super().__init__(parent, **kwargs)
+        
+        # Lưu màu nền của parent để sử dụng sau này
+        self.parent_bg = parent_bg
         
         # Bind events
         self.bind('<Enter>', self._on_enter)
@@ -70,68 +78,144 @@ class RoundedButton(tk.Canvas):
         try:
             self.delete('all')
             
-            # Use disabled colors if state is disabled
+            # Xác định màu sắc dựa vào trạng thái
             fill_color = self.disabled_color if self.state == 'disabled' else self.current_color
             text_color = self.disabled_fg if self.state == 'disabled' else self.fg
             
-            # Draw rounded rectangle
+            # Lấy kích thước canvas
+            width, height = self.winfo_width(), self.winfo_height()
+            
+            # Vẽ hình chữ nhật nền đầy đủ với màu giống màu nền parent
+            # Điều này đảm bảo không còn khoảng trống nào
+            self.create_rectangle(0, 0, width, height, fill=self.parent_bg, outline=self.parent_bg)
+            
+            # Vẽ nút bo tròn
             self.create_rounded_rect(
-                1, 1,
-                self.winfo_width() - 2,
-                self.winfo_height() - 2,
+                0, 0, width, height, 
                 self.radius,
                 fill=fill_color,
-                outline=fill_color
+                outline=fill_color  # Outline cùng màu với fill
             )
             
-            # Draw text centered
+            # Vẽ text
             self.create_text(
-                self.winfo_width() / 2,
-                self.winfo_height() / 2,
+                width / 2,
+                height / 2,
                 text=self.text,
                 fill=text_color,
                 font=self.font,
                 justify=tk.CENTER
             )
         except tk.TclError:
-            # Handle case where widget is being destroyed
+            # Xử lý trường hợp widget đang bị hủy
             pass
 
     def create_rounded_rect(self, x1, y1, x2, y2, radius, **kwargs):
-        # Ensure radius isn't too large for the button
+        # Đảm bảo bán kính không quá lớn
         radius = min(radius, (x2 - x1) / 2, (y2 - y1) / 2)
         
-        # Create points for rounded rectangle
-        points = [
-            x1 + radius, y1,                  # Top left start
-            x2 - radius, y1,                  # Top right start
-            x2, y1,                          # Top right corner
-            x2, y1 + radius,                 # Top right end
-            x2, y2 - radius,                 # Bottom right start
-            x2, y2,                          # Bottom right corner
-            x2 - radius, y2,                 # Bottom right end
-            x1 + radius, y2,                 # Bottom left start
-            x1, y2,                          # Bottom left corner
-            x1, y2 - radius,                 # Bottom left end
-            x1, y1 + radius,                 # Top left start
-            x1, y1                           # Top left corner
-        ]
+        # Lấy các thông số màu sắc
+        fill_color = kwargs.get('fill')
+        outline_color = kwargs.get('outline')
         
-        return self.create_polygon(points, smooth=True, **kwargs)
+        # Vẽ hình chữ nhật với viền cong
+        width = x2 - x1
+        height = y2 - y1
+        
+        # Tạo đường dẫn cho hình chữ nhật có viền cong
+        oval_diameter = 2 * radius
+        
+        # Tạo hình chữ nhật chính
+        self.create_rectangle(
+            x1 + radius, y1, 
+            x2 - radius, y2, 
+            fill=fill_color, outline=""
+        )
+        
+        # Tạo hình chữ nhật hai bên
+        self.create_rectangle(
+            x1, y1 + radius, 
+            x2, y2 - radius, 
+            fill=fill_color, outline=""
+        )
+        
+        # Tạo 4 hình cung ở 4 góc
+        # Góc trên bên trái
+        self.create_oval(
+            x1, y1, 
+            x1 + oval_diameter, y1 + oval_diameter, 
+            fill=fill_color, outline=""
+        )
+        
+        # Góc trên bên phải
+        self.create_oval(
+            x2 - oval_diameter, y1, 
+            x2, y1 + oval_diameter, 
+            fill=fill_color, outline=""
+        )
+        
+        # Góc dưới bên phải
+        self.create_oval(
+            x2 - oval_diameter, y2 - oval_diameter, 
+            x2, y2, 
+            fill=fill_color, outline=""
+        )
+        
+        # Góc dưới bên trái
+        self.create_oval(
+            x1, y2 - oval_diameter, 
+            x1 + oval_diameter, y2, 
+            fill=fill_color, outline=""
+        )
+
+    def _create_quarter_circle(self, cx, cy, radius, start_angle, end_angle):
+        """Create a quarter circle polygon points at the given center with radius and angles"""
+        points = []
+        # Tăng số bước để có đường bo tròn mượt mà hơn
+        steps = 20  # Tăng số bước để góc bo tròn mượt mà hơn
+        for i in range(steps + 1):
+            angle = math.radians(start_angle + (end_angle - start_angle) * i / steps)
+            x = cx + radius * math.cos(angle)
+            y = cy + radius * math.sin(angle)
+            points.append(x)
+            points.append(y)
+        return points
 
     def _on_enter(self, e):
         if self.state != 'disabled':  # Only change color if not disabled
             self.current_color = self.hover_color
+            # Lưu trữ màu chữ ban đầu để có thể khôi phục khi di chuột ra
+            if not hasattr(self, 'original_fg'):
+                self.original_fg = self.fg
+            # Thay đổi màu chữ sang tối khi di chuột vào
+            self.fg = "#000000"  # Đen
             self._draw()
 
     def _on_leave(self, e):
         if self.state != 'disabled':  # Only change color if not disabled
             self.current_color = self.color
+            # Khôi phục màu chữ ban đầu
+            if hasattr(self, 'original_fg'):
+                self.fg = self.original_fg
             self._draw()
 
     def _on_click(self, e):
         if self.command and str(self['state']) != 'disabled':
+            # Ghi nhớ màu hiện tại để khôi phục sau khi click
+            old_color = self.current_color
+            # Thêm hiệu ứng nhấn bằng cách tạm thời thay đổi màu (nếu có màu)
+            if self.current_color:  # Chỉ thay đổi màu nếu nút có màu nền
+                self.current_color = self.hover_color
+                self._draw()
+                # Đặt hẹn giờ để khôi phục màu gốc sau 100ms
+                self.after(100, lambda: self._restore_color(old_color))
+            # Gọi lệnh được gán cho nút
             self.command()
+
+    def _restore_color(self, color):
+        """Khôi phục màu gốc của nút sau khi click"""
+        self.current_color = color
+        self._draw()
 
     def _on_resize(self, e):
         self._draw()
@@ -256,8 +340,8 @@ class MP3Converter:
         self.root.configure(bg=self.current_theme["bg"])
 
         # Language configuration
-        self.current_language = 'vi'  # Mặc định là tiếng Việt
-        self.language = "vi"
+        self.current_language = 'en'  # Mặc định là tiếng Việt
+        self.language = "en"
         self.language_strings = {
             "en": {
                 "title": "YouTube & SoundCloud to MP3 Converter",
@@ -274,6 +358,7 @@ class MP3Converter:
                 "error_url": "Please enter at least one YouTube or SoundCloud URL!",
                 "error_title": "Error",
                 "success_title": "Success",
+                "info_title": "Information",
                 "downloading": "⏳ Downloading: {}",
                 "downloaded": "✅ Downloaded: {}",
                 "failed": "❌ Failed: {}",
@@ -284,7 +369,26 @@ class MP3Converter:
                 "copy": "Copy",
                 "paste": "Paste",
                 "select_all": "Select All",
-                "flac_format": "FLAC Format (High Quality)"
+                "flac_format": "FLAC Format (High Quality)",
+                "track_selection_title": "Track Selection",
+                "select_tracks_to_download": "Select tracks to download",
+                "select_all": "Select All",
+                "deselect_all": "Deselect All",
+                "confirm": "Download Selected",
+                "cancel": "Cancel",
+                "canceled": "Canceled",
+                "some_downloads_canceled": "Some downloads were canceled by user.",
+                "album_selection_canceled": "Album selection was canceled. You can start a new download.",
+                "no_tracks_selected": "Please select at least one track to download.",
+                "selected_tracks": "tracks selected",
+                "skipped_tracks": "{} tracks were skipped due to geo-restriction",
+                "geo_restricted": "All tracks are geo-restricted",
+                "geo_failed": "❌ Geo-restricted: {}",
+                "loading_album": "⏳ Loading album information...",
+                "checking_tracks": "⏳ Checking tracks in album: {}",
+                "checking_track": "⏳ Checking track {}/{} in {}",
+                "found_tracks": "✅ Found {} available tracks in {}",
+                "loading_track": "⏳ Loading track information..."
             },
             "vi": {
                 "title": "Chuyển đổi YouTube & SoundCloud sang MP3",
@@ -301,6 +405,7 @@ class MP3Converter:
                 "error_url": "Vui lòng nhập ít nhất một liên kết YouTube hoặc SoundCloud!",
                 "error_title": "Lỗi",
                 "success_title": "Thành công",
+                "info_title": "Thông tin",
                 "downloading": "⏳ Đang tải: {}",
                 "downloaded": "✅ Tải thành công: {}",
                 "failed": "❌ Tải thất bại: {}",
@@ -311,7 +416,27 @@ class MP3Converter:
                 "copy": "Sao chép",
                 "paste": "Dán",
                 "select_all": "Chọn tất cả",
-                "flac_format": "Định dạng FLAC (Chất lượng cao)"
+                "flac_format": "Định dạng FLAC (Chất lượng cao)",
+                "track_selection_title": "Chọn bài hát",
+                "select_tracks_to_download": "Chọn bài hát để tải xuống",
+                "select_all": "Chọn tất cả",
+                "deselect_all": "Bỏ chọn tất cả",
+                "confirm": "Tải đã chọn",
+                "cancel": "Hủy",
+                "canceled": "Đã hủy",
+                "some_downloads_canceled": "Một số bài hát đã bị hủy tải bởi người dùng.",
+                "album_selection_canceled": "Đã hủy chọn album. Bạn có thể bắt đầu tải mới.",
+                "no_tracks_selected": "Vui lòng chọn ít nhất một bài hát để tải.",
+                "selected_tracks": "bài hát đã chọn",
+                "skipped_tracks": "{} bài hát đã bị bỏ qua do hạn chế theo vùng",
+                "geo_restricted": "Tất cả bài hát bị hạn chế theo vùng",
+                "geo_failed": "❌ Bị chặn theo vùng: {}",
+                "skipped_tracks": "{} bài hát đã bị bỏ qua do hạn chế theo vùng",
+                "loading_album": "⏳ Đang tải thông tin album...",
+                "checking_tracks": "⏳ Đang kiểm tra các bài hát trong album: {}",
+                "checking_track": "⏳ Đang kiểm tra bài {}/{} trong {}",
+                "found_tracks": "✅ Đã tìm thấy {} bài hát có thể tải trong {}",
+                "loading_track": "⏳ Đang tải thông tin bài hát..."
             }
         }
 
@@ -338,7 +463,7 @@ class MP3Converter:
         # Font configuration
         self.title_font = Font(family="Helvetica", size=15, weight="bold")
         self.normal_font = Font(family="Helvetica", size=11)
-        self.button_font = Font(family="Helvetica", size=12, weight="bold")
+        self.button_font = Font(family="Helvetica", size=11, weight="bold")
 
         # Main container
         self.main_frame = tk.Frame(self.root, bg=self.current_theme["bg"])
@@ -408,37 +533,48 @@ class MP3Converter:
         )
         self.title_label.pack(side=tk.LEFT)
 
-        # Dark mode toggle button
+        # Tạo button container ở góc phải
+        self.button_container = tk.Frame(header_frame, bg=self.current_theme["bg"])
+        self.button_container.pack(side=tk.RIGHT)
+        
+        # Language toggle button (hiển thị mặc định)
+        self.lang_button = RoundedButton(
+            self.button_container,
+            text="🇻🇳" if self.language == "en" else "🇺🇸",
+            command=self.toggle_language,
+            radius=6,
+            padding=0,  # Giảm padding xuống 0
+            width=30,   # Giảm kích thước nút
+            height=30,
+            color="",   # Màu nút trong suốt
+            hover_color="",  # Màu hover cũng trong suốt
+            fg=self.current_theme["fg"],
+            font=Font(family="Helvetica", size=15)
+        )
+        self.lang_button.pack(side=tk.RIGHT)
+
+        # Dark mode toggle button (ẩn ban đầu)
         self.theme_button = RoundedButton(
-            header_frame,
+            self.button_container,
             text="🌙" if not self.dark_mode else "☀️",
             command=self.toggle_theme,
-            radius=8,
-            padding=4,
-            width=40,
+            radius=6,
+            padding=0,  # Giảm padding xuống 0
+            width=30,    # Giảm kích thước nút
             height=30,
-            color=self.current_theme["button_bg"],
-            hover_color=self.current_theme["button_active_bg"],
-            fg=self.current_theme["button_fg"],
-            font=self.normal_font
+            color="",    # Màu nút trong suốt
+            hover_color="",  # Màu hover cũng trong suốt
+            fg=self.current_theme["fg"],
+            font=Font(family="Helvetica", size=12)
         )
-        self.theme_button.pack(side=tk.RIGHT, padx=3)
-
-        # Language toggle button
-        self.lang_button = RoundedButton(
-            header_frame,
-            text="EN" if self.language == "vi" else "VI",
-            command=self.toggle_language,
-            radius=8,
-            padding=4,
-            width=40,
-            height=30,
-            color=self.current_theme["button_bg"],
-            hover_color=self.current_theme["button_active_bg"],
-            fg=self.current_theme["button_fg"],
-            font=self.normal_font
-        )
-        self.lang_button.pack(side=tk.RIGHT, padx=3)
+        self.theme_button.pack_forget()  # Ẩn ban đầu
+        
+        # Thiết lập hover events
+        self.lang_button.bind('<Enter>', self._show_theme_button)
+        self.button_container.bind('<Leave>', self._hide_theme_button)
+        
+        # Thêm biến để theo dõi timer
+        self.hide_timer_id = None
 
         # URL input section
         input_frame = ttk.LabelFrame(
@@ -525,12 +661,13 @@ class MP3Converter:
             path_frame,
             text=self.language_strings[self.language]["choose_folder"],
             command=self.choose_directory,
-            radius=8,
-            padding=8,
+            radius=12,  # Giảm từ 8 xuống 6
+            padding=6,  # Giảm từ 8 xuống 6
             color=self.current_theme["button_bg"],
             hover_color=self.current_theme["button_active_bg"],
             fg=self.current_theme["button_fg"],
-            font=self.normal_font
+            font=self.normal_font,
+            height=28  # Giảm chiều cao
         )
         self.choose_folder_button.pack(side=tk.RIGHT)
 
@@ -543,12 +680,14 @@ class MP3Converter:
             button_frame,
             text=self.language_strings[self.language]["download"],
             command=self.download_all_videos,
-            radius=10,
-            padding=25,
+            radius=12,  # Giảm từ 10 xuống 8
+            padding=12,  # Giảm từ 25 xuống 15
             color=self.current_theme["button_bg"],
             hover_color=self.current_theme["button_active_bg"],
             fg=self.current_theme["button_fg"],
-            font=self.button_font
+            font=self.button_font,
+            height=28,  # Thêm tham số height để giảm chiều cao (giá trị mặc định là 35)
+            width=120  # Thêm tham số width để điều chỉnh chiều rộng cố định
         )
         self.download_button.pack(side=tk.LEFT, padx=(0, 5))
         
@@ -569,6 +708,8 @@ class MP3Converter:
             height=2,  # Increased height for better visibility
             font=self.normal_font,
             bg=self.current_theme["entry_bg"],
+            highlightthickness=1,
+            highlightcolor=self.current_theme["progress_color"],
             wrap=tk.WORD,
             state=tk.DISABLED,
             padx=6,
@@ -585,16 +726,30 @@ class MP3Converter:
         footer_frame = tk.Frame(self.main_frame, bg=self.current_theme["bg"])
         footer_frame.pack(fill=tk.X, pady=(3, 0))
 
+        # Thêm năm ứng dụng ở góc trái
+        current_year = datetime.now().strftime("%Y")
+        self.year_label = tk.Label(
+            footer_frame,
+            text=f"© {current_year}",
+            font=("Helvetica", 9),
+            bg=self.current_theme["bg"],
+            fg=self.current_theme["fg"]
+        )
+        self.year_label.pack(side=tk.LEFT)
+
+        # Cập nhật nút help
         self.help_button = RoundedButton(
             footer_frame,
-            text=self.language_strings[self.language]["help"],
+            text="ℹ️",
             command=self.show_help,
-            radius=8,
-            padding=8,
-            color=self.current_theme["button_bg"],
-            hover_color=self.current_theme["button_active_bg"],
-            fg=self.current_theme["button_fg"],
-            font=self.normal_font
+            radius=6,
+            padding=25,
+            width=30,
+            height=22,
+            color=footer_frame.cget('bg'),  # Sử dụng màu nền của parent thay vì "transparent"
+            hover_color=footer_frame.cget('bg'),  # Sử dụng màu nền của parent
+            fg=self.current_theme["fg"],
+            font=Font(family="Helvetica", size=10)
         )
         self.help_button.pack(side=tk.RIGHT)
 
@@ -628,8 +783,14 @@ class MP3Converter:
         # Toggle language
         self.language = "en" if self.language == "vi" else "vi"
         
-        # Update button text to show the OTHER language (what you'll switch to next time)
-        self.lang_button.config(text="VI" if self.language == "en" else "EN")
+        # Chỉ cập nhật text thông qua config
+        self.lang_button.config(text="🇻🇳" if self.language == "en" else "🇺🇸")
+        
+        # Cập nhật nút với màu trong suốt
+        self.lang_button.color = ""
+        self.lang_button.hover_color = ""
+        self.lang_button.current_color = ""
+        self.lang_button._draw()  # Vẽ lại nút
         
         # Update all UI text
         self.update_ui_text()
@@ -638,9 +799,6 @@ class MP3Converter:
         self.create_context_menu()
 
     def update_ui_text(self):
-        # Update window title
-        self.root.title(self.tr("title"))
-        
         # Update main title
         self.title_label.config(text=self.tr("title"))
         
@@ -662,9 +820,6 @@ class MP3Converter:
                 self.download_button.configure(text=self.tr("download_flac"))
             else:
                 self.download_button.configure(text=self.tr("download"))
-        
-        # Update help button
-        self.help_button.config(text=self.tr("help"))
         
         # Update progress frame title
         self.progress_frame.config(text=self.tr("progress"))
@@ -811,7 +966,9 @@ class MP3Converter:
                 filename = d.get('filename', '').split('/')[-1]
                 title = filename
             
-            converting_msg = f"⚙️ Converting: {title}"
+            # Thêm hỗ trợ đa ngôn ngữ cho thông báo chuyển đổi
+            converting_text = "Converting" if self.language == "en" else "Đang chuyển đổi"
+            converting_msg = f"⚙️ {converting_text}: {title}"
             
             def update_converting_status():
                 with self.download_lock:
@@ -836,25 +993,143 @@ class MP3Converter:
             return self.album_info_cache[url]
         
         try:
+            # Cấu hình cơ bản cho yt-dlp với tối ưu hóa tốc độ
             ydl_opts = {
-                'quiet': True, 
+                'quiet': True,
                 'format': 'bestaudio/best',
-                'socket_timeout': 60,  # Increased timeout to 120 seconds
-                'nocheckcertificate': True
+                'socket_timeout': 10,  # Giảm timeout xuống
+                'extractor_args': {
+                    'soundcloud': {
+                        'client_id': 'iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX'
+                    }
+                },
+                'no_warnings': True,
+                'extract_flat': True,  # Chỉ lấy thông tin cơ bản
+                'force_generic_extractor': False,  # Tắt generic extractor
+                'concurrent_fragment_downloads': 8,  # Tăng số lượng tải song song
+                'buffersize': 1024,  # Tăng buffer size
             }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info_dict = ydl.extract_info(url, download=False)
-                
-                # Cache the result if requested
-                if cache:
-                    self.album_info_cache[url] = info_dict
-                return info_dict
-        except Exception as e:
-            print(f"Error getting info: {str(e)}")
             
-            # Tăng số lượng failed_downloads nếu không lấy được thông tin
-            with self.download_lock:
-                self.failed_downloads += 1
+            if self.is_soundcloud_url(url):
+                # Thông báo đang tải thông tin album
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    # Lấy thông tin cơ bản trước
+                    info_dict = ydl.extract_info(url, download=False, process=False)
+                    
+                    # Kiểm tra xem có phải là playlist không
+                    if info_dict.get('_type') == 'playlist':
+                        # Nếu là playlist/album thì hiển thị loading_album
+                        self.update_song_list(self.tr("loading_album"))
+                    else:
+                        # Nếu là bài hát đơn thì hiển thị loading_track
+                        self.update_song_list(self.tr("loading_track"))
+                    
+                    if info_dict.get('_type') == 'playlist':
+                        entries = info_dict.get('entries', [])
+                        original_count = len(entries)
+                        available_entries = []
+                        
+                        # Cập nhật thông báo với tên album
+                        album_title = info_dict.get('title', 'Unknown Album')
+                        self.update_song_list(self.tr("checking_tracks").format(album_title))
+                        
+                        # Tạo và quản lý các luồng kiểm tra song song
+                        max_threads = 5  # Số luồng tối đa
+                        thread_semaphore = threading.Semaphore(max_threads)
+                        threads = []
+                        entries_lock = threading.Lock()
+                        
+                        def check_track(entry, index):
+                            try:
+                                with thread_semaphore:
+                                    # Cập nhật trạng thái kiểm tra track
+                                    self.update_song_list(
+                                        self.tr("checking_track").format(index + 1, original_count, album_title)
+                                    )
+                                    
+                                    track_url = entry.get('url', entry.get('webpage_url'))
+                                    if not track_url:
+                                        return
+                                    
+                                    # Tối ưu options cho kiểm tra track
+                                    track_opts = {
+                                        'quiet': True,
+                                        'format': 'bestaudio/best',
+                                        'socket_timeout': 10,
+                                        'no_warnings': True,
+                                        'extract_flat': False,
+                                        'force_generic_extractor': False,
+                                        'extractor_args': {
+                                            'soundcloud': {
+                                                'client_id': 'iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX'
+                                            }
+                                        }
+                                    }
+                                    
+                                    with yt_dlp.YoutubeDL(track_opts) as track_ydl:
+                                        track_info = track_ydl.extract_info(track_url, download=False)
+                                        
+                                        if track_info and 'url' in track_info:
+                                            entry['title'] = track_info.get('title', entry.get('title', 'Unknown'))
+                                            entry['artist'] = track_info.get('artist', track_info.get('uploader', 'Unknown Artist'))
+                                            
+                                            with entries_lock:
+                                                available_entries.append(entry)
+                                                
+                            except Exception as e:
+                                print(f"Error checking track {index + 1}: {str(e)}")
+                        
+                        # Tạo và khởi chạy các luồng
+                        for i, entry in enumerate(entries):
+                            thread = threading.Thread(
+                                target=check_track,
+                                args=(entry, i),
+                                daemon=True
+                            )
+                            threads.append(thread)
+                            thread.start()
+                            
+                            # Đợi một chút giữa các lần tạo thread để tránh quá tải
+                            time.sleep(0.1)
+                        
+                        # Đợi tất cả các luồng hoàn thành
+                        for thread in threads:
+                            thread.join()
+                        
+                        # Cập nhật thông tin album
+                        info_dict['entries'] = available_entries
+                        info_dict['original_entries_count'] = original_count
+                        
+                        # Thông báo hoàn thành kiểm tra
+                        self.update_song_list(
+                            self.tr("found_tracks").format(len(available_entries), album_title)
+                        )
+                    
+                    else:
+                        # Đơn track, hiển thị loading track
+                        self.update_song_list(self.tr("loading_track"))
+            else:
+                # YouTube URL, hiển thị loading track
+                self.update_song_list(self.tr("loading_track"))
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info_dict = ydl.extract_info(url, download=False, process=False)
+            
+            # Cache kết quả
+            if cache:
+                self.album_info_cache[url] = info_dict
+            return info_dict
+                
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Error getting info: {error_msg}")
+            
+            if self.is_soundcloud_url(url):
+                return {
+                    'title': 'Unknown Album',
+                    '_type': 'playlist',
+                    'entries': [],
+                    'original_entries_count': 0
+                }
             
             return None
 
@@ -1009,16 +1284,72 @@ class MP3Converter:
         if info.get('_type') == 'playlist':
             entries = info.get('entries', [])
             
+            # Thêm thông báo nếu một số bài hát bị bỏ qua do geo-restriction
+            original_count = info.get('original_entries_count', 0)
+            if original_count > 0 and original_count > len(entries):
+                skipped_msg = f"⚠️ {self.tr('skipped_tracks').format(original_count - len(entries))}"
+                self.add_downloading_song(skipped_msg)
+            
+            # Show dialog with tracks for selection
+            if entries:
+                # Đảm bảo cờ skip_final_message được khởi tạo
+                if not hasattr(self, 'skip_final_message'):
+                    self.skip_final_message = False
+                    
+                tracks_to_download = self.show_album_track_selection(album_title, entries)
+                
+                # Kiểm tra nếu đã hủy (danh sách trống và was_canceled = True)
+                if not tracks_to_download and hasattr(self, 'was_canceled') and self.was_canceled:
+                    # Đánh dấu album là đã hủy trong danh sách
+                    cancel_msg = f"{album_msg} ({self.tr('canceled')})"
+                    self.update_download_status(album_msg, cancel_msg)
+                    
+                    # Đánh dấu download này đã hoàn thành
+                    with self.download_lock:
+                        self.completed_downloads += 1
+                    
+                    # Không cần hiển thị thông báo ở đây vì đã được hiển thị trong show_album_track_selection
+                    return False
+                elif not tracks_to_download:
+                    # Nếu không có bài hát nào được chọn nhưng không phải do hủy
+                    # (có thể người dùng bỏ chọn tất cả và nhấn xác nhận)
+                    cancel_msg = f"{album_msg} (0 {self.tr('selected_tracks')})"
+                    self.update_download_status(album_msg, cancel_msg)
+                    
+                    with self.download_lock:
+                        self.completed_downloads += 1
+                    
+                    return False
+                
+                # Cập nhật thông báo số lượng bài hát đã chọn
+                selected_msg = f"{album_msg} ({len(tracks_to_download)} {self.tr('selected_tracks')})"
+                self.update_download_status(album_msg, selected_msg)
+            else:
+                tracks_to_download = []
+                
+                # Nếu không có bài hát nào có thể tải do geo-restriction
+                if not entries:
+                    error_msg = f"{album_msg} ({self.tr('geo_restricted')})"
+                    self.update_download_status(album_msg, error_msg)
+                    
+                    with self.download_lock:
+                        self.completed_downloads += 1
+                        self.failed_downloads += 1
+                    
+                    return False
+            
             # Create a list of tracks to download
             track_downloads = []
-            for entry in entries:
+            for idx, entry in enumerate(entries):
+                # Skip tracks that were removed by user
+                track_url = entry.get('url', entry.get('webpage_url'))
+                if not track_url or idx not in tracks_to_download:
+                    continue
+                    
                 track_title = entry.get('title', 'Unknown Track')
                 track_msg = self.tr("track").format(track_title)
                 self.add_downloading_song(track_msg)
-                
-                track_url = entry.get('webpage_url')
-                if track_url:
-                    track_downloads.append((track_url, track_msg))
+                track_downloads.append((track_url, track_msg))
             
             # Lưu số lượng bài hát trong album để theo dõi tiến trình
             album_tracks_count = len(track_downloads)
@@ -1039,49 +1370,74 @@ class MP3Converter:
                     'failed': 0
                 }
             
-            # Now download each track (one at a time to avoid API rate limits)
-            for idx, (track_url, track_msg) in enumerate(track_downloads):
-                # Cập nhật số thứ tự để người dùng biết đang tải bài thứ mấy
+            # Tạo và quản lý các luồng tải song song
+            max_concurrent_downloads = 4  # Giới hạn số lượng tải đồng thời
+            download_threads = []
+            active_threads = []
+            download_semaphore = threading.Semaphore(max_concurrent_downloads)
+            
+            # Tạo hàm wrapper để giới hạn số lượng tải song song
+            def download_track_with_semaphore(idx, track_url, track_msg):
+                nonlocal success
+                # Cập nhật tiến trình
                 progress_msg = f"{track_msg} ({idx+1}/{album_tracks_count})"
                 self.update_download_status(track_msg, progress_msg)
                 
-                # Tải bài hát
-                track_success = self.download_track(track_url, album_path, progress_msg)
-                
-                # Cập nhật trạng thái album
-                with self.download_lock:
-                    if album_title in self.albums_in_progress:
-                        if track_success:
-                            self.albums_in_progress[album_title]['completed'] += 1
-                        else:
-                            self.albums_in_progress[album_title]['failed'] += 1
-                            success = False
+                # Đợi cho đến khi có slot trống
+                download_semaphore.acquire()
+                try:
+                    # Tải bài hát
+                    track_success = self.download_track(track_url, album_path, progress_msg)
+                    
+                    # Cập nhật trạng thái album
+                    with self.download_lock:
+                        if album_title in self.albums_in_progress:
+                            if track_success:
+                                self.albums_in_progress[album_title]['completed'] += 1
+                            else:
+                                self.albums_in_progress[album_title]['failed'] += 1
+                                success = False
+                finally:
+                    # Luôn đảm bảo giải phóng semaphore ngay cả khi xảy ra lỗi
+                    download_semaphore.release()
             
-            # Album tải xong, nhưng CHỈ xóa nó khỏi albums_in_progress khi tất cả bài hát
-            # đã được xử lý xong (hoặc thành công hoặc thất bại)
+            # Khởi tạo và khởi chạy các luồng tải
+            for idx, (track_url, track_msg) in enumerate(track_downloads):
+                thread = threading.Thread(
+                    target=download_track_with_semaphore, 
+                    args=(idx, track_url, track_msg),
+                    daemon=True
+                )
+                download_threads.append(thread)
+                thread.start()
+                active_threads.append(thread)
+                
+                # Đợi để tránh tạo quá nhiều request cùng lúc
+                time.sleep(0.5)
+            
+            # Đợi tất cả các luồng hoàn thành
+            for thread in download_threads:
+                thread.join()
+            
+            # Album tải xong, cập nhật trạng thái
             with self.download_lock:
                 if album_title in self.albums_in_progress:
                     album_stats = self.albums_in_progress[album_title]
                     total_processed = album_stats['completed'] + album_stats['failed']
                     
-                    # Chỉ xóa khỏi danh sách khi đã xử lý đủ số bài
-                    if total_processed >= album_stats['total']:
-                        del self.albums_in_progress[album_title]
-                        
-                        
-                        if self.language == 'vi':
-                           album_summary = f"Album: {album_title} - Tải xong {album_stats['completed']}/{album_stats['total']} bài"
-                        else:  # 'en' hoặc mặc định là tiếng Anh
-                           album_summary = f"Album: {album_title} - Downloaded {album_stats['completed']}/{album_stats['total']} tracks"
-            
-                        self.update_download_status(album_msg, album_summary)
-                        
-                        # Check if we need to update the progress bar to 100%
-                        if self.completed_downloads >= self.total_downloads:
-                            # Check if there are no more albums in progress
-                            if not self.albums_in_progress:
-                                # No more albums, set progress to 100% if we've completed all downloads
-                                self.progress_var.set(100)
+                    # Xóa khỏi danh sách theo dõi
+                    del self.albums_in_progress[album_title]
+                    
+                    if self.language == 'vi':
+                        album_summary = f"Album: {album_title} - Tải xong {album_stats['completed']}/{album_stats['total']} bài"
+                    else:  # 'en' hoặc mặc định là tiếng Anh
+                        album_summary = f"Album: {album_title} - Downloaded {album_stats['completed']}/{album_stats['total']} tracks"
+                    
+                    self.update_download_status(album_msg, album_summary)
+                    
+                    # Kiểm tra nếu tất cả download đã hoàn thành
+                    if self.completed_downloads >= self.total_downloads and not self.albums_in_progress:
+                        self.progress_var.set(100)
         
         return success
 
@@ -1089,7 +1445,7 @@ class MP3Converter:
         try:
             info = self.get_info(url, cache=False)
             if not info:
-                error_msg = self.tr("failed").format(url)
+                error_msg = self.tr("geo_failed").format(url) if "geo restriction" in str(url) else self.tr("failed").format(url)
                 self.add_downloading_song(error_msg)
                 
                 with self.download_lock:
@@ -1107,37 +1463,86 @@ class MP3Converter:
             
             sanitized_title = self.sanitize_filename(title)
             
+            # Tạo tên file với đường dẫn đầy đủ
             if output_path:
-                filename = os.path.join(output_path, sanitized_title)
+                base_path = output_path
             else:
-                filename = os.path.join(self.save_path, f"{sanitized_title}")
+                base_path = self.save_path
+            
+            # Chọn định dạng audio
+            audio_format = 'flac' if self.use_flac.get() else 'mp3'
+            
+            # Tạo tên file duy nhất
+            counter = 1
+            base_filename = os.path.join(base_path, sanitized_title)
+            final_filename = f"{base_filename}.{audio_format}"
+            
+            while os.path.exists(final_filename):
+                final_filename = f"{base_filename} ({counter}).{audio_format}"
+                counter += 1
             
             # Define metadata
             artist = info.get('artist', info.get('uploader', 'Unknown Artist'))
-            title = info.get('title', 'Unknown Title')
             current_date = datetime.now().strftime("%Y-%m-%d")
             
-            # Choose audio format based on user selection
-            audio_format = 'flac' if self.use_flac.get() else 'mp3'
-            audio_quality = 'best' if self.use_flac.get() else '320'
+            # Tạo postprocessor_args như một list đơn
+            postprocessor_args = []
             
-            # Fixed ydl_opts with correct postprocessor args structure
+            # Thêm audio arguments nếu là MP3
+            if not self.use_flac.get():
+                postprocessor_args.extend([
+                    '-b:a', '320k',
+                    '-ar', '48000',
+                    '-ac', '2'
+                ])
+            
+            # Thêm metadata arguments
+            postprocessor_args.extend([
+                '-metadata', f'title={title}',
+                '-metadata', f'artist={artist}',
+                '-metadata', f'album=Downloaded from YTMP3',
+                '-metadata', f'date={current_date}',
+                '-metadata', f'comment=Downloaded on {current_date}',
+                '-metadata', f'source={url}',  # Thêm URL gốc vào trường source
+                '-metadata', f'purl={url}',    # Thêm URL gốc vào trường purl (purchase URL)
+                '-metadata', f'copyright=Source URL: {url}'  # Hiển thị rõ ràng hơn trong trường copyright
+            ])
+
+            # Cấu hình yt-dlp với tên file duy nhất
             ydl_opts = {
                 'format': 'bestaudio/best',
-                'outtmpl': filename,
+                'outtmpl': os.path.splitext(final_filename)[0],
                 'progress_hooks': [self.progress_hook],
                 'postprocessor_hooks': [self.postprocessor_hook],
-                'socket_timeout': 60,
+                'socket_timeout': 180,
                 'nocheckcertificate': True,
                 'ffmpeg_location': self.ffmpeg_path,
-                # Cache optimization
-                'cachedir': False,  # Disable cache to avoid disk I/O
+                'cachedir': False,
                 'writethumbnail': True,
+                'skip_download_archive': True,
+                'noplaylist': False,
+                'extract_flat': False,
+                'geo_bypass': True,
+                'geo_bypass_country': 'US',
+                'no_warnings': True,
+                'retries': 5,
+                'fragment_retries': 5,
+                'extractor_retries': 5,
+                'skip_unavailable_fragments': True,
+                # Thêm các tùy chọn mới để fix lỗi 403
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-us,en;q=0.5',
+                    'Sec-Fetch-Mode': 'navigate',
+                },
+                # Cache optimization
+                'rm_cachedir': True,
                 'postprocessors': [
                     {
                         'key': 'FFmpegExtractAudio',
                         'preferredcodec': audio_format,
-                        'preferredquality': audio_quality,
+                        'preferredquality': 'best',
                     },
                     {
                         'key': 'EmbedThumbnail',
@@ -1147,31 +1552,11 @@ class MP3Converter:
                         'add_metadata': True,
                     },
                 ],
-                # Add custom metadata fields
                 'add_metadata': True,
-                # Correctly format the postprocessor_args as a flat list
-                'postprocessor_args': [
-                    '-metadata', f'title={title}',
-                    '-metadata', f'artist={artist}',
-                    '-metadata', f'album=Downloaded from YTMP3',
-                    '-metadata', f'date={current_date}',
-                    '-metadata', f'comment=Downloaded on {current_date}',
-                    '-metadata', f'comment=Source: {url}',
-                # Alternative fields for source URL to ensure compatibility with different players
-                    '-metadata', f'Where from={url}',
-                    '-metadata', f'copyright=Downloaded from: {url}',
-                ]
+                'postprocessor_args': postprocessor_args  # Sử dụng list đơn
             }
             
-            # Add MP3-specific options if not using FLAC
-            if not self.use_flac.get():
-                ydl_opts['postprocessor_args'].extend([
-                    '-b:a', '320k',  # Constant bitrate of 320kbps
-                    '-ar', '48000',  # 48kHz sample rate
-                    '-ac', '2'       # Stereo audio (2 channels)
-                ])
-            
-            # Use with statement to ensure proper cleanup
+            # Download with unique filename
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
             
@@ -1196,20 +1581,20 @@ class MP3Converter:
                 title = info_dict.get('title', '')
                 
                 # Update UI to show processing status
-                processing_msg = f"⚙️ Converting: {title}"
-                
                 def update_processing_status():
                     with self.download_lock:
-
-                        if self.language == 'vi':
-                            processing_msg = f"⚙️ Đang xử lý: {title}"
-                            processing_text = "⚙️ Đang xử lý"
-                        else:
+                        if self.language == 'en':
                             processing_msg = f"⚙️ Converting: {title}"
                             processing_text = "⚙️ Converting"
+                        else:  # Vietnamese
+                            processing_msg = f"⚙️ Đang chuyển đổi: {title}"
+                            processing_text = "⚙️ Đang chuyển đổi"
 
                         for i, msg in enumerate(self.downloading_songs):
-                            if title in msg and (processing_text in msg or "⚙️ Converting" in msg or "⚙️ Đang xử lý" in msg):
+                            if title in msg and (processing_text in msg or 
+                                               "⚙️ Converting" in msg or 
+                                               "⚙️ Đang chuyển đổi" in msg or
+                                               "⚙️ Đang xử lý" in msg):
                                 self.downloading_songs[i] = processing_msg
                                 break
                         self.update_song_list()
@@ -1235,7 +1620,9 @@ class MP3Converter:
         def update_final_status():
             with self.download_lock:
                 for i, msg in enumerate(self.downloading_songs):
-                    if title in msg and ("⚙️ Converting" in msg or "⚙️ Đang xử lý" in msg):
+                    # Kiểm tra cả phiên bản tiếng Anh và tiếng Việt của thông báo chuyển đổi
+                    if title in msg and ("⚙️ Converting" in msg or "⚙️ Đang xử lý" in msg or 
+                                       "⚙️ Converting" in msg or "⚙️ Đang chuyển đổi" in msg):
                         self.downloading_songs[i] = success_msg
                         break
                 self.update_song_list()
@@ -1268,7 +1655,20 @@ class MP3Converter:
             self.add_downloading_song(downloading_msg)
 
             sanitized_title = self.sanitize_filename(title)
-            filename = os.path.join(self.save_path, f"{sanitized_title}")
+            
+            # Tạo tên file duy nhất
+            counter = 1
+            base_filename = os.path.join(self.save_path, sanitized_title)
+            audio_format = 'flac' if self.use_flac.get() else 'mp3'
+            final_filename = f"{base_filename}.{audio_format}"
+            
+            # Kiểm tra và thêm số nếu file đã tồn tại
+            while os.path.exists(final_filename):
+                final_filename = f"{base_filename} ({counter}).{audio_format}"
+                counter += 1
+            
+            # Sử dụng tên file không có phần mở rộng cho yt-dlp
+            filename = os.path.splitext(final_filename)[0]
 
             current_date = datetime.now().strftime("%Y-%m-%d")
             
@@ -1282,13 +1682,20 @@ class MP3Converter:
             # Simplified options focusing on basic functionality
             ydl_opts = {
                 'format': 'bestaudio/best',
-                'outtmpl': filename,
+                'outtmpl': os.path.splitext(filename)[0],
                 'progress_hooks': [self.progress_hook],
                 'postprocessor_hooks': [self.postprocessor_hook],
                 'socket_timeout': 60,
                 'nocheckcertificate': True,
                 'ffmpeg_location': self.ffmpeg_path,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-us,en;q=0.5',
+                    'Sec-Fetch-Mode': 'navigate',
+                },
                 # Cache optimization
+                'rm_cachedir': True,
                 'cachedir': False,  # Disable cache to avoid disk I/O
                 'writethumbnail': True,
                 'postprocessors': [
@@ -1317,7 +1724,7 @@ class MP3Converter:
                     '-metadata', f'comment=Source: {url}',
                 # Alternative fields for source URL to ensure compatibility with different players
                     '-metadata', f'Where from={url}',
-                    '-metadata', f'copyright=Downloaded from: {url}',
+                    '-metadata', f'copyright=Source: {url}',
                 ]
             }
             
@@ -1387,9 +1794,14 @@ class MP3Converter:
         
         # Thông báo về số URL hợp lệ đã tìm thấy
         if len(valid_urls) > 1:
+            if self.language == "en":
+                message = f"Found {len(valid_urls)} valid links. Starting download..."
+            else:
+                message = f"Đã tìm thấy {len(valid_urls)} link hợp lệ. Bắt đầu tải xuống..."
+                
             messagebox.showinfo(
                 self.tr("success_title"),
-                f"Đã tìm thấy {len(valid_urls)} link hợp lệ. Bắt đầu tải xuống..."
+                message
             )
 
         # Clear any cached album info
@@ -1431,9 +1843,21 @@ class MP3Converter:
         last_completed = 0
         no_progress_count = 0
         
+        # Kiểm tra ngay lập tức xem có nên bỏ qua không
+        if hasattr(self, 'skip_final_message') and self.skip_final_message:
+            # Đặt lại cờ và thoát khỏi vòng lặp giám sát
+            self.skip_final_message = False
+            return
+        
         while checks < max_checks:
             threading.Event().wait(check_interval)
             checks += 1
+            
+            # Kiểm tra trong mỗi vòng lặp
+            if hasattr(self, 'skip_final_message') and self.skip_final_message:
+                # Đặt lại cờ và thoát khỏi vòng lặp giám sát
+                self.skip_final_message = False
+                return
             
             elapsed_seconds = (datetime.now() - start_time).total_seconds()
             if elapsed_seconds > max_download_time:
@@ -1498,6 +1922,12 @@ class MP3Converter:
         # All downloads complete or stopped
         def finalize():
             print("Finalizing download process")
+            
+            # Kiểm tra cờ skip_final_message
+            if hasattr(self, 'skip_final_message') and self.skip_final_message:
+                # Đặt lại cờ
+                self.skip_final_message = False
+                return
             
             # Stop the download button animation
             self.download_button.stop_animation()
@@ -1683,6 +2113,29 @@ Xử lý lỗi:
         # Update theme button text
         self.theme_button.config(text="☀️" if self.dark_mode else "🌙")
         
+        # Cập nhật button container trước
+        if hasattr(self, 'button_container'):
+            self.button_container.configure(bg=self.current_theme["bg"])
+        
+        # Cập nhật toàn bộ thuộc tính của theme button để đảm bảo trong suốt
+        self.theme_button.parent_bg = self.current_theme["bg"]
+        self.theme_button.color = ""
+        self.theme_button.hover_color = ""
+        self.theme_button.current_color = ""
+        self.theme_button.bg = self.current_theme["bg"]
+        self.theme_button.configure(bg=self.current_theme["bg"])
+        self.theme_button._draw()  # Vẽ lại nút
+        
+        # Cũng cập nhật nút ngôn ngữ nếu nó đang hiển thị
+        if hasattr(self, 'lang_button'):
+            self.lang_button.parent_bg = self.current_theme["bg"]
+            self.lang_button.color = ""
+            self.lang_button.hover_color = ""
+            self.lang_button.current_color = ""
+            self.lang_button.bg = self.current_theme["bg"]
+            self.lang_button.configure(bg=self.current_theme["bg"])
+            self.lang_button._draw()  # Vẽ lại nút
+        
         # Apply the theme
         self.apply_theme()
 
@@ -1691,6 +2144,10 @@ Xử lý lỗi:
         # Update main window and frames
         self.root.configure(bg=self.current_theme["bg"])
         self.main_frame.configure(bg=self.current_theme["bg"])
+        
+        # Cập nhật container của các nút
+        if hasattr(self, 'button_container'):
+            self.button_container.configure(bg=self.current_theme["bg"])
         
         # Update format checkbox
         self.format_checkbox.configure(
@@ -1788,14 +2245,60 @@ Xử lý lỗi:
         # Update all rounded buttons with new theme colors
         for widget in self.main_frame.winfo_children():
             if isinstance(widget, tk.Frame):
+                # Cập nhật màu nền cho frame trước
+                widget.configure(bg=self.current_theme["bg"])
+                
                 for child in widget.winfo_children():
                     if isinstance(child, RoundedButton):
-                        child.color = self.current_theme["button_bg"]
-                        child.hover_color = self.current_theme["button_active_bg"]
-                        child.fg = self.current_theme["button_fg"]
+                        # Cập nhật màu nền parent cho nút
+                        child.parent_bg = self.current_theme["bg"]
+                        
+                        # Kiểm tra xem có phải nút help hoặc language không
+                        if child == self.help_button or child == self.lang_button or child == self.theme_button:
+                            # Sử dụng màu trong suốt cho các nút icon
+                            child.color = ""
+                            child.hover_color = ""
+                            child.fg = self.current_theme["fg"]  # Chỉ cập nhật màu chữ
+                            child.current_color = ""  # Đảm bảo giá trị current_color cũng trống
+                        else:
+                            # Các nút khác cập nhật màu bình thường
+                            child.color = self.current_theme["button_bg"]
+                            child.hover_color = self.current_theme["button_active_bg"]
+                            child.fg = self.current_theme["button_fg"]
+                        
                         if child.state != 'disabled':
                             child.current_color = child.color
+                    
+                        # Gọi _draw để vẽ lại nút với màu mới
                         child._draw()
+
+        # Thêm vào phương thức apply_theme()
+        # Cập nhật year_label
+        if hasattr(self, 'year_label'):
+            self.year_label.configure(
+                bg=self.current_theme["bg"],
+                fg=self.current_theme["fg"]
+            )
+
+        # Cập nhật nút ngôn ngữ
+        if hasattr(self, 'lang_button'):
+            self.lang_button.parent_bg = self.current_theme["bg"]
+            self.lang_button.color = ""
+            self.lang_button.hover_color = ""
+            self.lang_button.current_color = ""
+            self.lang_button.bg = self.current_theme["bg"]
+            self.lang_button.configure(bg=self.current_theme["bg"])
+            self.lang_button._draw()
+
+        # Cập nhật nút theme nếu nó đang hiển thị
+        if hasattr(self, 'theme_button'):
+            self.theme_button.parent_bg = self.current_theme["bg"]
+            self.theme_button.color = ""
+            self.theme_button.hover_color = ""
+            self.theme_button.current_color = ""
+            self.theme_button.bg = self.current_theme["bg"]
+            self.theme_button.configure(bg=self.current_theme["bg"])
+            self.theme_button._draw()
 
     def generate_random_dark_theme(self):
         """Generate a random dark color scheme that maintains readability"""
@@ -1858,6 +2361,352 @@ Xử lý lỗi:
                 self.download_button.configure(text=self.tr("download_flac"))
             else:
                 self.download_button.configure(text=self.tr("download"))
+
+    # Thêm phương thức mới để hiển thị và ẩn nút ngôn ngữ
+    def _show_language_button(self, event):
+        # Hủy timer trước đó nếu có
+        if self.hide_timer_id:
+            self.button_container.after_cancel(self.hide_timer_id)
+            self.hide_timer_id = None
+        
+        # Đảm bảo nút ngôn ngữ có màu nền đúng trước khi hiển thị
+        self.lang_button.parent_bg = self.current_theme["bg"]
+        self.lang_button.color = ""
+        self.lang_button.hover_color = ""
+        self.lang_button.current_color = ""
+        self.lang_button._draw()
+        
+        # Hiển thị nút ngôn ngữ
+        self.lang_button.pack(side=tk.RIGHT, before=self.theme_button)
+        
+        # Không đặt timer tại đây để nút luôn hiển thị khi chuột đang ở trên nút
+
+    def _hide_language_button(self, event):
+        # Kiểm tra xem con trỏ có đang ở trên button container không
+        x, y = self.button_container.winfo_pointerxy()
+        container_x = self.button_container.winfo_rootx()
+        container_y = self.button_container.winfo_rooty()
+        container_width = self.button_container.winfo_width()
+        container_height = self.button_container.winfo_height()
+        
+        # Nếu con trỏ không nằm trong vùng của container, đặt timer để ẩn sau 5 giây
+        if not (container_x <= x <= container_x + container_width and 
+                container_y <= y <= container_y + container_height):
+            # Hủy timer cũ nếu có
+            if self.hide_timer_id:
+                self.button_container.after_cancel(self.hide_timer_id)
+            
+            # Đặt timer mới để ẩn nút sau 5 giây
+            self.hide_timer_id = self.button_container.after(7000, self._hide_language_button_timer)
+
+    def _hide_language_button_timer(self, event=None):
+        # Ẩn nút ngôn ngữ
+        self.lang_button.pack_forget()
+        
+        # Đặt timer ID về None
+        self.hide_timer_id = None
+
+    def _show_theme_button(self, event):
+        # Hủy timer trước đó nếu có
+        if self.hide_timer_id:
+            self.button_container.after_cancel(self.hide_timer_id)
+            self.hide_timer_id = None
+        
+        # Đảm bảo nút theme có màu nền đúng trước khi hiển thị
+        self.theme_button.parent_bg = self.current_theme["bg"]
+        self.theme_button.color = ""
+        self.theme_button.hover_color = ""
+        self.theme_button.current_color = ""
+        self.theme_button._draw()
+        
+        # Hiển thị nút theme
+        self.theme_button.pack(side=tk.RIGHT, after=self.lang_button)
+
+    def _hide_theme_button(self, event):
+        # Kiểm tra xem con trỏ có đang ở trên button container không
+        x, y = self.button_container.winfo_pointerxy()
+        container_x = self.button_container.winfo_rootx()
+        container_y = self.button_container.winfo_rooty()
+        container_width = self.button_container.winfo_width()
+        container_height = self.button_container.winfo_height()
+        
+        # Nếu con trỏ không nằm trong vùng của container, đặt timer để ẩn sau 3 giây
+        if not (container_x <= x <= container_x + container_width and 
+                container_y <= y <= container_y + container_height):
+            # Hủy timer cũ nếu có
+            if self.hide_timer_id:
+                self.button_container.after_cancel(self.hide_timer_id)
+            
+            # Đặt timer mới để ẩn nút sau 3 giây
+            self.hide_timer_id = self.button_container.after(3000, self._hide_theme_button_timer)
+
+    def _hide_theme_button_timer(self, event=None):
+        # Ẩn nút theme
+        self.theme_button.pack_forget()
+        
+        # Đặt timer ID về None
+        self.hide_timer_id = None
+
+    def show_album_track_selection(self, album_title, entries):
+        """Display dialog to select which tracks to download from the album"""
+        # Create and configure the dialog window
+        track_dialog = tk.Toplevel(self.root)
+        track_dialog.title(f"{album_title} - {self.tr('track_selection_title')}")
+        track_dialog.geometry("600x400")
+        track_dialog.minsize(500, 300)
+        track_dialog.configure(bg=self.current_theme["bg"])
+        
+        # Make dialog modal
+        track_dialog.transient(self.root)
+        track_dialog.grab_set()
+        
+        # Create variable to track cancellation
+        self.was_canceled = False
+        
+        # Create and style the frame
+        frame = tk.Frame(track_dialog, bg=self.current_theme["bg"], padx=15, pady=15)
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Add heading
+        heading_text = self.tr('select_tracks_to_download') + f" ({len(entries)} tracks)"
+        heading = tk.Label(
+            frame, 
+            text=heading_text,
+            font=self.title_font,
+            bg=self.current_theme["bg"],
+            fg=self.current_theme["fg"]
+        )
+        heading.pack(pady=(0, 15), anchor=tk.W)
+        
+        # Create scrollable frame for tracks
+        track_container = tk.Frame(frame, bg=self.current_theme["bg"])
+        track_container.pack(fill=tk.BOTH, expand=True)
+        
+        # Create canvas and scrollbar
+        canvas = tk.Canvas(track_container, bg=self.current_theme["bg"], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(track_container, orient=tk.VERTICAL, command=canvas.yview)
+        
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Create inner frame for track checkboxes
+        inner_frame = tk.Frame(canvas, bg=self.current_theme["bg"])
+        canvas.create_window((0, 0), window=inner_frame, anchor=tk.NW)
+        
+        # Track selection vars and buttons
+        track_vars = {}
+        
+        # Select/Deselect all functionality
+        def select_all():
+            for var in track_vars.values():
+                var.set(True)
+        
+        def deselect_all():
+            for var in track_vars.values():
+                var.set(False)
+        
+        # Select/Deselect buttons at the top
+        select_buttons_frame = tk.Frame(frame, bg=self.current_theme["bg"])
+        select_buttons_frame.pack(pady=(0, 10), anchor=tk.W)
+        
+        select_all_btn = RoundedButton(
+            select_buttons_frame,
+            text=self.tr('select_all'),
+            command=select_all,
+            radius=8,
+            padding=8,
+            color=self.current_theme["button_bg"],
+            hover_color=self.current_theme["button_active_bg"],
+            fg=self.current_theme["button_fg"],
+            font=self.normal_font,
+            height=24
+        )
+        select_all_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        deselect_all_btn = RoundedButton(
+            select_buttons_frame,
+            text=self.tr('deselect_all'),
+            command=deselect_all,
+            radius=8,
+            padding=8,
+            color=self.current_theme["button_bg"],
+            hover_color=self.current_theme["button_active_bg"],
+            fg=self.current_theme["button_fg"],
+            font=self.normal_font,
+            height=24
+        )
+        deselect_all_btn.pack(side=tk.LEFT)
+        
+        # Add checkboxes for each track
+        for idx, entry in enumerate(entries):
+            track_title = entry.get('title', 'Unknown Track')
+            track_frame = tk.Frame(inner_frame, bg=self.current_theme["bg"], pady=2)
+            track_frame.pack(fill=tk.X, expand=True)
+            
+            # Create a variable for this track
+            track_vars[idx] = tk.BooleanVar(value=True)
+            
+            # Create a checkbutton for this track
+            check = tk.Checkbutton(
+                track_frame,
+                text=f"{idx+1}. {track_title}",
+                variable=track_vars[idx],
+                bg=self.current_theme["bg"],
+                fg=self.current_theme["fg"],
+                selectcolor=self.current_theme["entry_bg"],
+                activebackground=self.current_theme["bg"],
+                activeforeground=self.current_theme["fg"],
+                font=self.normal_font
+            )
+            check.pack(side=tk.LEFT, padx=(5, 0), anchor=tk.W)
+            
+            # Create remove button
+            def create_remove_command(idx_to_remove):
+                return lambda: track_vars[idx_to_remove].set(False)
+            
+            remove_btn = RoundedButton(
+                track_frame,
+                text="🗑️",
+                command=create_remove_command(idx),
+                radius=5,
+                padding=2,
+                color=self.current_theme["bg"],
+                hover_color="#ff6b6b",
+                fg=self.current_theme["fg"],
+                font=self.normal_font,
+                height=20,
+                width=30
+            )
+            remove_btn.pack(side=tk.RIGHT, padx=(0, 5))
+        
+        # Update canvas scroll region when inner frame changes size
+        def update_scrollregion(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        
+        inner_frame.bind("<Configure>", update_scrollregion)
+        
+        # Make canvas responsive to mouse wheel
+        def on_mousewheel(event):
+            # Ensure canvas exists and is usable
+            try:
+                canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            except tk.TclError:
+                pass  # Ignore errors if canvas is destroyed
+        
+        # Bind mousewheel for different platforms
+        if sys.platform.startswith('win'):
+            track_dialog.bind_all("<MouseWheel>", on_mousewheel)
+        elif sys.platform.startswith('darwin'):
+            # Use a function that handles errors gracefully
+            def mac_mousewheel(event):
+                try:
+                    canvas.yview_scroll(int(-1*event.delta), "units")
+                except tk.TclError:
+                    pass  # Ignore errors if canvas is destroyed
+            
+            track_dialog.bind_all("<MouseWheel>", mac_mousewheel)
+        else:
+            track_dialog.bind_all("<Button-4>", lambda event: on_mousewheel(event))
+            track_dialog.bind_all("<Button-5>", lambda event: on_mousewheel(event))
+        
+        # Buttons for confirming selection
+        button_frame = tk.Frame(frame, bg=self.current_theme["bg"])
+        button_frame.pack(pady=(15, 0), anchor=tk.E)
+        
+        # Variables to store the result
+        selected_tracks = []
+        
+        def on_confirm():
+            nonlocal selected_tracks
+            selected_tracks = [idx for idx, var in track_vars.items() if var.get()]
+            
+            # Nếu không có bài hát nào được chọn khi nhấn xác nhận
+            if not selected_tracks:
+                messagebox.showinfo(
+                    self.tr("info_title"),
+                    self.tr("no_tracks_selected")
+                )
+                # Không đóng hộp thoại, để người dùng có thể chọn lại
+                return
+            
+            # Unbind mousewheel events before destroying
+            unbind_mousewheel()
+            track_dialog.destroy()
+        
+        def on_cancel():
+            # Set cancellation flag
+            self.was_canceled = True
+            
+            # Unbind mousewheel events before destroying
+            unbind_mousewheel()
+            track_dialog.destroy()
+            
+            # Hiển thị thông báo hủy ngay tại đây
+            messagebox.showinfo(
+                self.tr("info_title"),
+                self.tr("album_selection_canceled")
+            )
+            
+            # Đặt cờ toàn cục để bỏ qua thông báo cuối cùng
+            self.skip_final_message = True
+            
+            # Kích hoạt lại nút tải
+            self.download_button.stop_animation()
+            self.download_button.configure(state='normal')
+        
+        # Function to unbind all mousewheel events
+        def unbind_mousewheel():
+            try:
+                if sys.platform.startswith('win'):
+                    track_dialog.unbind_all("<MouseWheel>")
+                elif sys.platform.startswith('darwin'):
+                    track_dialog.unbind_all("<MouseWheel>")
+                else:
+                    track_dialog.unbind_all("<Button-4>")
+                    track_dialog.unbind_all("<Button-5>")
+            except:
+                pass  # Ignore any errors when unbinding
+        
+        # Also handle dialog window close event
+        track_dialog.protocol("WM_DELETE_WINDOW", on_cancel)
+        
+        cancel_btn = RoundedButton(
+            button_frame,
+            text=self.tr('cancel'),
+            command=on_cancel,
+            radius=10,
+            padding=8,
+            color="#ff6b6b",
+            hover_color="#ff4757",
+            fg="#ffffff",
+            font=self.normal_font,
+            height=28
+        )
+        cancel_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        confirm_btn = RoundedButton(
+            button_frame,
+            text=self.tr('confirm'),
+            command=on_confirm,
+            radius=10,
+            padding=8,
+            color=self.current_theme["button_bg"],
+            hover_color=self.current_theme["button_active_bg"],
+            fg=self.current_theme["button_fg"],
+            font=self.normal_font,
+            height=28
+        )
+        confirm_btn.pack(side=tk.LEFT)
+        
+        # Wait for the dialog to close
+        track_dialog.wait_window()
+        
+        # Return empty list if canceled, otherwise return selected tracks
+        if self.was_canceled:
+            return []
+        
+        return selected_tracks
 
 if __name__ == "__main__":
     root = tk.Tk()
