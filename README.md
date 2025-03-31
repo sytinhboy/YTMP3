@@ -57,6 +57,6 @@ Vui lòng chỉ sử dụng công cụ này để tải nội dung bạn có quy
 *Lưu ý: YTMP3 không phải là sản phẩm chính thức của YouTube hoặc SoundCloud. Đây là công cụ độc lập được phát triển để hỗ trợ người dùng trích xuất âm thanh từ các nền tảng này cho mục đích sử dụng cá nhân.*
 
 
-<img width="597" alt="Screenshot 2025-03-27 at 14 52 32" src="https://github.com/user-attachments/assets/2b33e85c-34f4-4f7b-8afd-a0a720025d4b" />
-<img width="604" alt="Screenshot 2025-03-27 at 14 46 32" src="https://github.com/user-attachments/assets/2777b688-5f96-4c59-8618-d56d4103043a" />
-<img width="606" alt="Screenshot 2025-03-27 at 14 46 16" src="https://github.com/user-attachments/assets/0f4ea651-f65f-44e1-8500-c64d291a0459" />
+<img width="573" alt="Screenshot 2025-04-01 at 00 17 19" src="https://github.com/user-attachments/assets/09c6586d-7449-4284-b24f-02ef5b2873ea" />
+<img width="608" alt="Screenshot 2025-04-01 at 00 16 16" src="https://github.com/user-attachments/assets/cb6e5cac-ea27-4be6-ba15-294aeb6df86b" />
+<img width="556" alt="Screenshot 2025-04-01 at 00 15 22" src="https://github.com/user-attachments/assets/8b1796b1-d081-4fcb-9e51-70ab7610010e" />
